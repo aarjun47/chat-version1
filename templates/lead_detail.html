@@ -1,0 +1,9 @@
+<h2>Conversation – {{ lead.phone }}</h2>
+
+<div style="border:1px solid #ccc; padding:10px;">
+  {% for msg in chats %}
+    <p>
+      <b>{{ msg.direction }}:</b> {{ msg.message_text }}
+    </p>
+  {% endfor %}
+</div>
