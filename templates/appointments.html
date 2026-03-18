@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Appointments</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>All Appointments</h1>
+        <div class="crm-nav">
+            <a href="/crm/leads" class="button">View Leads</a>
+            <a href="/crm/appointments" class="button active">View Appointments</a>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Lead Name</th>
+                    <th>Phone Number</th>
+                    <th>Requested Time</th>
+                    <th>Status</th>
+                    <th>Created At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for appointment in appointments %}
+                <tr>
+                    <td>{{ appointment.id }}</td>
+                    <td>{{ appointment.lead.name if appointment.lead and appointment.lead.name else 'N/A' }}</td>
+                    <td>{{ appointment.lead.phone_number if appointment.lead else 'N/A' }}</td>
+                    <td>{{ appointment.requested_time }}</td>
+                    <td>{{ appointment.status }}</td>
+                    <td>{{ appointment.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td><a href="/crm/leads/{{ appointment.lead_id }}">View Lead</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

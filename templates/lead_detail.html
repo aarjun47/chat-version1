@@ -1,9 +1,28 @@
-<h2>Conversation – {{ lead.phone }}</h2>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lead Detail - {{ lead.name if lead.name else lead.phone_number }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Lead Detail</h1>
+        <a href="/crm/leads">Back to Leads</a>
 
-<div style="border:1px solid #ccc; padding:10px;">
-  {% for msg in chats %}
-    <p>
-      <b>{{ msg.direction }}:</b> {{ msg.message_text }}
-    </p>
-  {% endfor %}
-</div>
+        <h2>Lead: {{ lead.name if lead.name else 'N/A' }} ({{ lead.phone_number }})</h2>
+        <p><strong>Service Interest:</strong> {{ lead.service_interest if lead.service_interest else 'N/A' }}</p>
+        <p><strong>Lead Created:</strong> {{ lead.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+
+        <h3>Conversation History</h3>
+        <div class="chat-history" style="border:1px solid #ccc; padding:10px;">
+          {% for chat in chats %}
+            <p>
+              <b>{{ chat.direction }}:</b> {{ chat.text }} <!-- Corrected from msg.message_text to chat.text -->
+            </p>
+          {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

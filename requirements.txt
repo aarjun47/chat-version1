@@ -1,8 +1,13 @@
 fastapi
-uvicorn
+uvicorn[standard]
+motor
+pymongo
+pydantic
 python-dotenv
-sqlalchemy
-psycopg2-binary
 requests
-jinja2
 twilio
+dateparser
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+slowapi

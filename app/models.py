@@ -1,24 +1,56 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
-from sqlalchemy.sql import func
-from .database import Base
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
 
 
-class Lead(Base):
-    __tablename__ = "leads"
+class ClientModel(BaseModel):
+    id: Optional[str] = None
+    institute_name: str
+    twilio_account_sid: str
+    twilio_auth_token: str
+    twilio_phone_number: str
+    persona_name: str = "Arun"
+    system_prompt: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(Integer, primary_key=True)
-    phone = Column(String, unique=True, index=True)
-    name = Column(String, default="N/A")
-    status = Column(String, default="New")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class UserModel(BaseModel):
+    """Login credentials for a client user."""
+    id: Optional[str] = None
+    client_id: str                        # which client this user belongs to
+    username: str
+    password_hash: str
+    must_change_password: bool = True     # forced on first login
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class Conversation(Base):
-    __tablename__ = "conversations"
+class LeadModel(BaseModel):
+    id: Optional[str] = None
+    client_id: str
+    phone_number: str
+    name: Optional[str] = None
+    service_interest: Optional[str] = None
+    state: str = "normal"
+    pending_appointment_time: Optional[str] = None
+    last_interaction_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(Integer, primary_key=True)
-    lead_id = Column(Integer, ForeignKey("leads.id"))
-    direction = Column(String)   # inbound / outbound
-    message_text = Column(Text)
-    source = Column(String)      # whatsapp / ai / admin
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ConversationModel(BaseModel):
+    id: Optional[str] = None
+    client_id: str
+    lead_id: str
+    text: str
+    direction: str
+    source: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AppointmentModel(BaseModel):
+    id: Optional[str] = None
+    client_id: str
+    lead_id: str
+    requested_time: str
+    status: str = "pending"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
