@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import "./index.css";
 
-const API = "";
+const API = "https://chatbot-nw9p.onrender.com";
 
 const getToken = () => localStorage.getItem("client_token");
 const getSession = () => { try { return JSON.parse(localStorage.getItem("client_session") || "{}"); } catch { return {}; } };

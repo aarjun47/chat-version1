@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import "./index.css";
 
-const API = "";
+const API = "https://chatbot-nw9p.onrender.com";
 
 const token = () => localStorage.getItem("master_token");
 const authFetch = (url, opts = {}) =>
