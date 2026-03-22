@@ -288,7 +288,7 @@ function ClientDetail({ clientId, onBack }) {
         <div className="overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">Edit Client Info</div>
-            {["institute_name", "persona_name", "twilio_account_sid", "twilio_phone_number"].map(key => (
+            {["institute_name", "persona_name", "twilio_account_sid", "twilio_phone_number", "webhook_url"].map(key => (
               <div className="form-group" key={key}>
                 <label className="form-label">{key.replace(/_/g, " ")}</label>
                 <input className="form-input" value={editForm[key] || ""} onChange={e => setEditForm({ ...editForm, [key]: e.target.value })} />
@@ -324,7 +324,7 @@ export default function MasterApp() {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-name">Lakshya CRM</div>
+          <div className="brand-name">Ai Studio</div>
           <div className="brand-tag">Master</div>
         </div>
         <nav className="sidebar-nav">
