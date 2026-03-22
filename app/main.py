@@ -7,6 +7,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 import traceback
+import asyncio
 from bson import ObjectId
 from twilio.rest import Client as TwilioClient
 
@@ -94,15 +95,19 @@ def build_welcome_back_message(lead: dict, client: dict) -> str:
     return f"Hi {name}! Welcome back to {institute} 😊 How can I assist you today?"
 
 
-def send_whatsapp(client: dict, to: str, body: str):
+async def send_whatsapp(client: dict, to: str, body: str):
     twilio = TwilioClient(
         client["twilio_account_sid"],
         client["twilio_auth_token"]
     )
-    twilio.messages.create(
-        from_=f"whatsapp:{client['twilio_phone_number']}",
-        to=f"whatsapp:{to}",
-        body=body
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: twilio.messages.create(
+            from_=f"whatsapp:{client['twilio_phone_number']}",
+            to=f"whatsapp:{to}",
+            body=body
+        )
     )
 
 
@@ -154,7 +159,7 @@ async def whatsapp_webhook(client_id: str, request: Request):
             await save_message(client_id, lead_id, ai_reply, "outbound", "ai")
             await update_lead_field(lead_id, {"state": "normal"})
             await update_last_interaction(lead_id)
-            send_whatsapp(client, from_number, ai_reply)
+            await send_whatsapp(client, from_number, ai_reply)
             return Response(status_code=200)
 
         text_lower = user_text.lower()
@@ -168,7 +173,7 @@ async def whatsapp_webhook(client_id: str, request: Request):
             await save_message(client_id, lead_id, ai_reply, "outbound", "ai")
             await update_lead_field(lead_id, {"state": "normal"})
             await update_last_interaction(lead_id)
-            send_whatsapp(client, from_number, ai_reply)
+            await send_whatsapp(client, from_number, ai_reply)
             return Response(status_code=200)
 
         appointment_words_detect = ["appointment", "appointemnt", "callback", "call"]
@@ -258,7 +263,7 @@ async def whatsapp_webhook(client_id: str, request: Request):
         if lead.get("state") not in ("awaiting_appointment_confirmation", "awaiting_appointment_time"):
             await update_lead_field(lead_id, {"state": "active_chat"})
         await update_last_interaction(lead_id)
-        send_whatsapp(client, from_number, ai_reply)
+        await send_whatsapp(client, from_number, ai_reply)
         return Response(status_code=200)
 
     except Exception as e:
