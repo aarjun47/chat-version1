@@ -45,7 +45,7 @@ body {
     linear-gradient(rgba(79, 142, 247, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(79, 142, 247, 0.04) 1px, transparent 1px);
   background-size: 40px 40px;
-  animation: grid-shift 20s linear infinite;
+  animation: grid-shift 8s ease-in-out infinite;
 }
 .auth-screen::after {
   content: '';
@@ -56,8 +56,11 @@ body {
   pointer-events: none;
 }
 @keyframes grid-shift {
-  from { transform: translateY(0); }
-  to { transform: translateY(40px); }
+  0%   { transform: translate(0px, 0px) skewX(0deg); }
+  25%  { transform: translate(20px, 10px) skewX(1.5deg); }
+  50%  { transform: translate(40px, 0px) skewX(0deg); }
+  75%  { transform: translate(20px, -10px) skewX(-1.5deg); }
+  100% { transform: translate(0px, 0px) skewX(0deg); }
 }
 .auth-scan {
   position: absolute;
@@ -166,7 +169,7 @@ body {
     linear-gradient(rgba(245,158,11,0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(245,158,11,0.04) 1px, transparent 1px);
   background-size: 40px 40px;
-  animation: grid-shift 20s linear infinite;
+  animation: grid-shift 8s ease-in-out infinite;
 }
 .force-box {
   width: 400px;

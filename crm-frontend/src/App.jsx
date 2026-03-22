@@ -57,9 +57,9 @@ function LoginScreen({ onLogin }) {
       <div className="auth-box">
         <div className="auth-logo-wrap">
           <div className="auth-logo-icon">💬</div>
-          <div className="auth-logo">Lakshya CRM</div>
+          <div className="auth-logo">Welcome</div>
         </div>
-        <div className="auth-role">Client Portal</div>
+        <div className="auth-role">Powered by AI Studio</div>
         <div className="auth-title">Sign in to your account</div>
         <div className="auth-sub">Access your leads and appointment dashboard</div>
         <div className="field">
@@ -104,7 +104,7 @@ function ForceChangePassword({ onChanged }) {
       <div className="force-box">
         <div className="auth-logo-wrap" style={{ marginBottom: 6 }}>
           <div className="auth-logo-icon">🔑</div>
-          <div className="auth-logo">Lakshya CRM</div>
+          <div className="auth-logo">Client Portal</div>
         </div>
         <div className="force-title" style={{ marginTop: 8 }}>Set New Password</div>
         <div className="force-sub" style={{ marginTop: 8 }}>⚠️ You are using a temporary password. Please set a new one to continue.</div>
@@ -339,12 +339,15 @@ export default function ClientApp() {
   };
   const page = pages[view] || pages.leads;
 
+  // Institute name from profile — falls back to username while loading
+  const instituteName = profile?.institute_name || session.username;
+
   return (
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-name">Lakshya CRM</div>
-          <div className="brand-tag">{profile?.institute_name || session.username}</div>
+          <div className="brand-name">{instituteName}</div>
+          <div className="brand-tag">Powered by AI Studio</div>
         </div>
         <nav className="sidebar-nav">
           <div className="nav-label">Menu</div>

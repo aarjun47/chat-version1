@@ -45,7 +45,7 @@ function LoginScreen({ onLogin }) {
       <div className="auth-box">
         <div className="auth-logo-wrap">
           <div className="auth-logo-icon">⚡</div>
-          <div className="auth-logo">Lakshya CRM</div>
+          <div className="auth-logo">AI Studio</div>
         </div>
         <div className="auth-role">Master Portal</div>
         <div className="auth-title">Sign in</div>
@@ -324,7 +324,7 @@ export default function MasterApp() {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-name">Lakshya CRM</div>
+          <div className="brand-name">AI Studio</div>
           <div className="brand-tag">Master</div>
         </div>
         <nav className="sidebar-nav">
