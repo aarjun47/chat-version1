@@ -14,6 +14,13 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_PROMPT_PATH = "app/prompts/system_prompt.txt"
 
+# Fallback chain — tries each model in order until one works
+MODELS = [
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "minimax/minimax-m2.5:free",
+    "arcee-ai/trinity-large-preview:free",
+]
+
 try:
     locale.setlocale(locale.LC_TIME, locale.getdefaultlocale())
 except:
@@ -26,41 +33,56 @@ def load_default_system_prompt():
 
 
 def call_openrouter(messages, temperature=0.7, max_tokens=300, response_format=None):
+    """
+    Tries each model in MODELS list in order.
+    Returns the first successful response.
+    Raises the last exception if all models fail.
+    """
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "model": "arcee-ai/trinity-large-preview:free",
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens
-    }
-    if response_format:
-        payload["response_format"] = response_format
 
-    r = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=30
-    )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+    last_exception = None
+
+    for model in MODELS:
+        try:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            if response_format:
+                payload["response_format"] = response_format
+
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            r.raise_for_status()
+            content = r.json()["choices"][0]["message"]["content"]
+            if content:
+                return content.strip()
+        except Exception as e:
+            print(f"Model {model} failed: {e}")
+            last_exception = e
+            continue
+
+    raise last_exception
 
 
 # ---------------------------------------
 # MEMORY AWARE CHAT ASSISTANT
-# Now accepts client for per-client persona + prompt
 # ---------------------------------------
 async def ask_llm(user_text: str, lead=None, greeting_type="NONE", client=None):
-    # Use client's custom system prompt if set, else fall back to default file
     if client and client.get("system_prompt"):
         system_prompt = client["system_prompt"]
     else:
         system_prompt = load_default_system_prompt()
 
-    # Inject persona name if client has a custom one
     if client and client.get("persona_name"):
         system_prompt = system_prompt.replace("Arun", client["persona_name"])
 
