@@ -45,7 +45,7 @@ function LoginScreen({ onLogin }) {
       <div className="auth-box">
         <div className="auth-logo-wrap">
           <div className="auth-logo-icon">⚡</div>
-          <div className="auth-logo">Lakshya CRM</div>
+          <div className="auth-logo">Ai Studio</div>
         </div>
         <div className="auth-role">Master Portal</div>
         <div className="auth-title">Sign in</div>
