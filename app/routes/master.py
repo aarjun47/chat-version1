@@ -25,7 +25,7 @@ class CreateClientRequest(BaseModel):
     twilio_account_sid: str
     twilio_auth_token: str
     twilio_phone_number: str
-    persona_name: Optional[str] = "Arun"
+    persona_name: str
     system_prompt: Optional[str] = None
     username: str
     password: str
@@ -40,7 +40,7 @@ class UpdateClientRequest(BaseModel):
     persona_name: Optional[str] = None
     system_prompt: Optional[str] = None
     is_active: Optional[bool] = None
-    webhook_url: Optional[str] = None          # ← added
+    webhook_url: Optional[str] = None
 
 
 class ResetCredentialsRequest(BaseModel):
@@ -77,7 +77,8 @@ async def get_clients(_: dict = Depends(require_master)):
 
 
 # =====================================================
-# GET SINGLE CLIENT (full detail including auth token)
+# GET SINGLE CLIENT DETAIL
+# #1 FIX — Whitelist fields, never expose twilio_auth_token
 # =====================================================
 
 @router.get("/clients/{client_id}")
@@ -90,8 +91,16 @@ async def get_client_detail(client_id: str, _: dict = Depends(require_master)):
     appts_count = await get_appointments_count_by_client(client_id)
     user = await get_user_by_client_id(client_id)
 
+    # #1 FIX — Explicitly whitelist fields. twilio_auth_token is intentionally excluded.
     return {
-        **client,
+        "id": client.get("id"),
+        "institute_name": client.get("institute_name"),
+        "twilio_account_sid": client.get("twilio_account_sid"),
+        "twilio_phone_number": client.get("twilio_phone_number"),
+        "persona_name": client.get("persona_name"),
+        "system_prompt": client.get("system_prompt"),
+        "is_active": client.get("is_active"),
+        "webhook_url": client.get("webhook_url"),
         "leads_count": leads_count,
         "appointments_count": appts_count,
         "username": user["username"] if user else None,
@@ -101,8 +110,6 @@ async def get_client_detail(client_id: str, _: dict = Depends(require_master)):
 
 # =====================================================
 # CREATE CLIENT + AUTO-GENERATE WEBHOOK URL
-# Webhook URL is ALWAYS saved to DB.
-# Twilio auto-registration is attempted but optional.
 # =====================================================
 
 @router.post("/clients")
@@ -118,20 +125,17 @@ async def create_new_client(body: CreateClientRequest, _: dict = Depends(require
 
     client_id = client["id"]
 
-    # Create login credentials for this client
     await create_user(
         client_id=client_id,
         username=body.username,
         password_hash=hash_password(body.password)
     )
 
-    # Always generate and save webhook URL if base_url provided
     webhook_url = None
     if body.base_url:
         webhook_url = f"{body.base_url}/message/{client_id}"
         await update_client(client_id, {"webhook_url": webhook_url})
 
-        # Try to auto-register with Twilio (optional, fails silently for sandbox)
         try:
             twilio = TwilioClient(body.twilio_account_sid, body.twilio_auth_token)
             numbers = twilio.incoming_phone_numbers.list(
@@ -143,10 +147,16 @@ async def create_new_client(body: CreateClientRequest, _: dict = Depends(require
         except Exception as e:
             print(f"Twilio webhook auto-registration failed (manual setup needed): {e}")
 
+    # #1 FIX — Explicitly whitelist fields. twilio_auth_token is intentionally excluded.
     return {
-        **client,
-        "username": body.username,
+        "id": client.get("id"),
+        "institute_name": client.get("institute_name"),
+        "twilio_account_sid": client.get("twilio_account_sid"),
+        "twilio_phone_number": client.get("twilio_phone_number"),
+        "persona_name": client.get("persona_name"),
+        "is_active": client.get("is_active"),
         "webhook_url": webhook_url,
+        "username": body.username,
         "message": "Client created successfully"
     }
 

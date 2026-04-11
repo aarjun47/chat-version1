@@ -14,7 +14,6 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_PROMPT_PATH = "app/prompts/system_prompt.txt"
 
-# Fallback chain — tries each model in order until one works
 MODELS = [
     "meta-llama/llama-3.1-8b-instruct:free",
     "minimax/minimax-m2.5:free",
@@ -23,8 +22,33 @@ MODELS = [
 
 try:
     locale.setlocale(locale.LC_TIME, locale.getdefaultlocale())
-except:
-    pass
+except Exception as e:                         # #8 FIX — no bare except
+    print(f"Locale setting failed: {e}")
+
+
+# =====================================================
+# #5 FIX — Prompt injection sanitization
+# Strips known injection patterns from user input
+# before it reaches the LLM context
+# =====================================================
+
+INJECTION_PATTERNS = [
+    r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?",
+    r"disregard\s+(all\s+)?(previous|prior)\s+instructions?",
+    r"forget\s+(all\s+)?(previous|prior|your)\s+instructions?",
+    r"you\s+are\s+now\s+",
+    r"new\s+persona",
+    r"pretend\s+(you\s+are|to\s+be)",
+    r"act\s+as\s+(if\s+you\s+are|a\s+)",
+    r"your\s+new\s+instructions?\s+(are|is)",
+    r"system\s*prompt\s*:",
+    r"<\s*system\s*>",
+]
+
+def sanitize_user_input(text: str) -> str:
+    for pattern in INJECTION_PATTERNS:
+        text = re.sub(pattern, "[filtered]", text, flags=re.IGNORECASE)
+    return text
 
 
 def load_default_system_prompt():
@@ -33,11 +57,6 @@ def load_default_system_prompt():
 
 
 def call_openrouter(messages, temperature=0.7, max_tokens=300, response_format=None):
-    """
-    Tries each model in MODELS list in order.
-    Returns the first successful response.
-    Raises the last exception if all models fail.
-    """
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
@@ -97,18 +116,23 @@ async def ask_llm(user_text: str, lead=None, greeting_type="NONE", client=None):
         memory_context += f"Current interest: {lead.get('service_interest') or 'None'}\n"
 
     if lead:
-        chats = await get_recent_messages(lead["id"], limit=6)
+        chats = await get_recent_messages(lead["client_id"], lead["id"], limit=6)
         if chats:
             memory_context += "\nRecent conversation:\n"
             for c in reversed(chats):
                 role = "User" if c["direction"] == "inbound" else "Assistant"
-                memory_context += f"{role}: {c['text']}\n"
+                # #5 FIX — sanitize historic user messages in context too
+                text = sanitize_user_input(c["text"]) if c["direction"] == "inbound" else c["text"]
+                memory_context += f"{role}: {text}\n"
 
     full_system_content = f"{system_prompt}\n\n[CONTEXT]\n{memory_context.strip()}"
 
+    # #5 FIX — sanitize current user input + wrap in delimiters
+    sanitized_text = sanitize_user_input(user_text)
+
     messages = [
         {"role": "system", "content": full_system_content},
-        {"role": "user", "content": user_text}
+        {"role": "user", "content": f"[USER INPUT START]\n{sanitized_text}\n[USER INPUT END]"}
     ]
 
     try:
@@ -137,8 +161,8 @@ Text: "{user_text}"
         name = data.get("name", "N/A")
         if name and name != "N/A":
             return name.strip().title()
-    except:
-        pass
+    except Exception as e:                     # #8 FIX — no bare except
+        print(f"LLM name extraction error: {e}")
 
     patterns = [
         r"(?:my name is|i am|i'm|this is|it's)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)"
@@ -169,8 +193,8 @@ Message: "{user_text}"
         service = res.strip().upper()
         if service in ["CA", "ACCA", "CMA", "CS", "CPA"]:
             return service
-    except:
-        pass
+    except Exception as e:                     # #8 FIX — no bare except
+        print(f"LLM service extraction error: {e}")
     return None
 
 
@@ -190,7 +214,8 @@ Message: {user_text}
             response_format={"type": "json_object"}
         )
         return json.loads(response)
-    except:
+    except Exception as e:                     # #8 FIX — no bare except
+        print(f"LLM appointment parsing error: {e}")
         return {"intent": "none", "time_info": None}
 
 

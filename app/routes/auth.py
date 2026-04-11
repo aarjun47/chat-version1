@@ -4,14 +4,16 @@
 # Rate limited to prevent brute force attacks.
 # ----------------------------------------------------
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Depends, status
+from fastapi.security import OAuth2PasswordBearer
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from pydantic import BaseModel
 
 from ..auth import (
     MASTER_USERNAME, MASTER_PASSWORD,
-    verify_password, hash_password, create_token
+    verify_password, hash_password, create_token,
+    revoke_token, oauth2_scheme
 )
 from ..crud import get_user_by_username, update_user_password
 
@@ -24,11 +26,6 @@ limiter = Limiter(key_func=get_remote_address)
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
 
 
 # =====================================================
@@ -81,18 +78,11 @@ async def client_login(request: Request, body: LoginRequest):
 
 
 # =====================================================
-# CLIENT CHANGE PASSWORD — 5 attempts per minute
+# LOGOUT — revokes token so it cannot be reused
+# even before natural 24hr expiry
 # =====================================================
 
-@router.post("/client/change-password")
-@limiter.limit("5/minute")
-async def change_password(request: Request, body: ChangePasswordRequest):
-    from ..auth import get_current_user, oauth2_scheme
-    from fastapi import Depends
-
-    # Auth is handled via the require_client dependency in client routes.
-    # This endpoint is re-exposed here for the force-change flow.
-    raise HTTPException(
-        status_code=400,
-        detail="Use /api/client/change-password with Authorization header"
-    )
+@router.post("/logout")
+async def logout(token: str = Depends(oauth2_scheme)):
+    await revoke_token(token)
+    return {"status": "logged out"}

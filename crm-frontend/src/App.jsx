@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import "./index.css";
+import AnalyticsView from "./AnalyticsView.jsx";
 
 const API = "https://chatbot-nw9p.onrender.com";
 
@@ -13,7 +14,7 @@ const authFetch = (url, opts = {}) =>
   });
 
 function fmt(dt) {
-  if (!dt) return "—";
+  if (!dt) return "-";
   return new Date(dt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
@@ -26,9 +27,6 @@ function getBadgeClass(state) {
   return "badge badge-default";
 }
 
-// =====================================================
-// LOGIN
-// =====================================================
 function LoginScreen({ onLogin }) {
   const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
@@ -47,8 +45,11 @@ function LoginScreen({ onLogin }) {
       localStorage.setItem("client_token", data.access_token);
       localStorage.setItem("client_session", JSON.stringify({ client_id: data.client_id, username: form.username, must_change_password: data.must_change_password }));
       onLogin(data);
-    } catch { setError("Could not connect to server"); }
-    finally { setLoading(false); }
+    } catch {
+      setError("Could not connect to server");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -61,7 +62,7 @@ function LoginScreen({ onLogin }) {
         </div>
         <div className="auth-role">Powered by AI Studio</div>
         <div className="auth-title">Sign in to your account</div>
-        <div className="auth-sub">Access your leads and appointment dashboard</div>
+        <div className="auth-sub">Access your leads, appointments, and analytics</div>
         <div className="field">
           <label>Username</label>
           <input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} onKeyDown={e => e.key === "Enter" && handleLogin()} autoComplete="username" />
@@ -71,7 +72,7 @@ function LoginScreen({ onLogin }) {
           <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === "Enter" && handleLogin()} autoComplete="current-password" />
         </div>
         <button className="auth-btn" onClick={handleLogin} disabled={loading}>
-          {loading ? "Signing in..." : "Sign in →"}
+          {loading ? "Signing in..." : "Sign in ->"}
         </button>
         {error && <div className="auth-err">{error}</div>}
       </div>
@@ -79,9 +80,6 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// =====================================================
-// FORCE CHANGE PASSWORD
-// =====================================================
 function ForceChangePassword({ onChanged }) {
   const [form, setForm] = useState({ current_password: "", new_password: "", confirm: "" });
   const [error, setError] = useState("");
@@ -107,20 +105,17 @@ function ForceChangePassword({ onChanged }) {
           <div className="auth-logo">Client Portal</div>
         </div>
         <div className="force-title" style={{ marginTop: 8 }}>Set New Password</div>
-        <div className="force-sub" style={{ marginTop: 8 }}>⚠️ You are using a temporary password. Please set a new one to continue.</div>
+        <div className="force-sub" style={{ marginTop: 8 }}>You are using a temporary password. Please set a new one to continue.</div>
         {error && <div className="auth-err">{error}</div>}
         <div className="field"><label>Current (Temporary) Password</label><input type="password" value={form.current_password} onChange={e => setForm({ ...form, current_password: e.target.value })} /></div>
         <div className="field"><label>New Password</label><input type="password" value={form.new_password} onChange={e => setForm({ ...form, new_password: e.target.value })} /></div>
         <div className="field"><label>Confirm New Password</label><input type="password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} /></div>
-        <button className="auth-btn" onClick={handle} disabled={loading}>{loading ? "Updating..." : "Set New Password →"}</button>
+        <button className="auth-btn" onClick={handle} disabled={loading}>{loading ? "Updating..." : "Set New Password ->"}</button>
       </div>
     </div>
   );
 }
 
-// =====================================================
-// LEADS VIEW
-// =====================================================
 function LeadsView({ onSelectLead }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -146,12 +141,12 @@ function LeadsView({ onSelectLead }) {
         <div className="card-header">
           <span className="card-title">All Leads</span>
           <div className="search-wrap">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon">Q</span>
             <input className="search-input" placeholder="Search name or phone..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
         {loading ? <div className="loading"><div className="spinner" />Loading...</div>
-          : filtered.length === 0 ? <div className="empty"><div className="empty-icon">👤</div>No leads yet</div>
+          : filtered.length === 0 ? <div className="empty"><div className="empty-icon">+</div>No leads yet</div>
           : <table>
               <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Interest</th><th>State</th><th>Last Active</th><th></th></tr></thead>
               <tbody>
@@ -160,10 +155,10 @@ function LeadsView({ onSelectLead }) {
                     <td style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>#{l.id.slice(-6)}</td>
                     <td className="cell-name">{l.name || <span style={{ color: "var(--muted)" }}>Unknown</span>}</td>
                     <td className="cell-mono">{l.phone_number}</td>
-                    <td>{l.service_interest ? <span className="badge badge-normal">{l.service_interest}</span> : "—"}</td>
+                    <td>{l.service_interest ? <span className="badge badge-normal">{l.service_interest}</span> : "-"}</td>
                     <td><span className={getBadgeClass(l.state)}>{l.state}</span></td>
                     <td>{fmt(l.last_interaction_at)}</td>
-                    <td><button className="btn btn-ghost btn-sm">View →</button></td>
+                    <td><button className="btn btn-ghost btn-sm">View</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -173,9 +168,6 @@ function LeadsView({ onSelectLead }) {
   );
 }
 
-// =====================================================
-// LEAD DETAIL
-// =====================================================
 function LeadDetail({ leadId, onBack }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -190,7 +182,7 @@ function LeadDetail({ leadId, onBack }) {
 
   return (
     <>
-      <button className="back-btn" onClick={onBack}>← Back to Leads</button>
+      <button className="back-btn" onClick={onBack}>{"<-"} Back to Leads</button>
       <div className="detail-grid">
         <div className="info-card">
           <div className="info-avatar">{lead.name?.charAt(0) || "?"}</div>
@@ -198,16 +190,16 @@ function LeadDetail({ leadId, onBack }) {
           <div className="info-phone">{lead.phone_number}</div>
           <hr className="info-divider" />
           <div className="info-row"><span className="info-key">State</span><span className={getBadgeClass(lead.state)}>{lead.state}</span></div>
-          <div className="info-row"><span className="info-key">Interest</span><span className="info-val">{lead.service_interest || "—"}</span></div>
+          <div className="info-row"><span className="info-key">Interest</span><span className="info-val">{lead.service_interest || "-"}</span></div>
           <div className="info-row"><span className="info-key">Created</span><span className="info-val" style={{ fontSize: 11 }}>{fmt(lead.created_at)}</span></div>
           <div className="info-row"><span className="info-key">Last Active</span><span className="info-val" style={{ fontSize: 11 }}>{fmt(lead.last_interaction_at)}</span></div>
           <div className="info-row"><span className="info-key">Messages</span><span className="info-val">{chats.length}</span></div>
         </div>
         <div className="chat-card">
-          <div className="chat-header">💬 Conversation History</div>
+          <div className="chat-header">Conversation History</div>
           <div className="chat-body">
             {chats.length === 0
-              ? <div className="empty"><div className="empty-icon">💬</div>No messages yet</div>
+              ? <div className="empty"><div className="empty-icon">+</div>No messages yet</div>
               : chats.map(m => (
                 <div key={m.id} className={`msg-row ${m.direction}`}>
                   <div className={`bubble ${m.direction}`}>
@@ -223,9 +215,6 @@ function LeadDetail({ leadId, onBack }) {
   );
 }
 
-// =====================================================
-// APPOINTMENTS VIEW
-// =====================================================
 function AppointmentsView() {
   const [appts, setAppts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -251,12 +240,12 @@ function AppointmentsView() {
         <div className="card-header">
           <span className="card-title">All Appointments</span>
           <div className="search-wrap">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon">Q</span>
             <input className="search-input" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
         {loading ? <div className="loading"><div className="spinner" />Loading...</div>
-          : filtered.length === 0 ? <div className="empty"><div className="empty-icon">📅</div>No appointments yet</div>
+          : filtered.length === 0 ? <div className="empty"><div className="empty-icon">+</div>No appointments yet</div>
           : <table>
               <thead><tr><th>Name</th><th>Phone</th><th>Requested Time</th><th>Status</th><th>Created</th></tr></thead>
               <tbody>
@@ -276,9 +265,6 @@ function AppointmentsView() {
   );
 }
 
-// =====================================================
-// SETTINGS
-// =====================================================
 function SettingsView() {
   const [form, setForm] = useState({ current_password: "", new_password: "", confirm: "" });
   const [msg, setMsg] = useState(null);
@@ -298,7 +284,7 @@ function SettingsView() {
 
   return (
     <div className="settings-card">
-      <div className="settings-title">🔑 Change Password</div>
+      <div className="settings-title">Change Password</div>
       {msg && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
       <div className="form-group"><label className="form-label">Current Password</label><input className="form-input" type="password" value={form.current_password} onChange={e => setForm({ ...form, current_password: e.target.value })} /></div>
       <div className="form-group"><label className="form-label">New Password</label><input className="form-input" type="password" value={form.new_password} onChange={e => setForm({ ...form, new_password: e.target.value })} /></div>
@@ -308,9 +294,6 @@ function SettingsView() {
   );
 }
 
-// =====================================================
-// ROOT
-// =====================================================
 export default function ClientApp() {
   const [authed, setAuthed] = useState(!!getToken());
   const [mustChange, setMustChange] = useState(getSession().must_change_password || false);
@@ -335,11 +318,10 @@ export default function ClientApp() {
     leads: { title: "Leads", sub: "All WhatsApp leads and their status" },
     "lead-detail": { title: "Lead Detail", sub: "Conversation history and lead info" },
     appointments: { title: "Appointments", sub: "Scheduled callbacks and status" },
+    analytics: { title: "Analytics", sub: "Lead growth, appointments, and enquiry mix" },
     settings: { title: "Settings", sub: "Account settings" },
   };
   const page = pages[view] || pages.leads;
-
-  // Institute name from profile — falls back to username while loading
   const instituteName = profile?.institute_name || session.username;
 
   return (
@@ -352,7 +334,8 @@ export default function ClientApp() {
         <nav className="sidebar-nav">
           <div className="nav-label">Menu</div>
           <button className={`nav-btn ${view === "leads" || view === "lead-detail" ? "active" : ""}`} onClick={() => setView("leads")}>👥 Leads</button>
-          <button className={`nav-btn ${view === "appointments" ? "active" : ""}`} onClick={() => setView("appointments")}>📅 Appointments</button>
+          <button className={`nav-btn ${view === "appointments" ? "active" : ""}`} onClick={() => setView("appointments")}>🗓️ Appointments</button>
+          <button className={`nav-btn ${view === "analytics" ? "active" : ""}`} onClick={() => setView("analytics")}>📊 Analytics</button>
           <div className="nav-label">Account</div>
           <button className={`nav-btn ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}>⚙️ Settings</button>
         </nav>
@@ -373,6 +356,7 @@ export default function ClientApp() {
           {view === "leads" && <LeadsView onSelectLead={handleSelectLead} />}
           {view === "lead-detail" && <LeadDetail leadId={selectedLeadId} onBack={() => setView("leads")} />}
           {view === "appointments" && <AppointmentsView />}
+          {view === "analytics" && <AnalyticsView authFetch={authFetch} />}
           {view === "settings" && <SettingsView />}
         </div>
       </main>

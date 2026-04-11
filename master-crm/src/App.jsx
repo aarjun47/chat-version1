@@ -123,7 +123,7 @@ function Dashboard({ onSelectClient }) {
 function AddClientModal({ onClose, onCreated }) {
   const [form, setForm] = useState({
     institute_name: "", twilio_account_sid: "", twilio_auth_token: "",
-    twilio_phone_number: "", persona_name: "Arun", system_prompt: "",
+    twilio_phone_number: "", persona_name: "", system_prompt: "",
     username: "", password: "",
     base_url: "https://chatbot-nw9p.onrender.com"
   });
@@ -132,6 +132,11 @@ function AddClientModal({ onClose, onCreated }) {
 
   const handleCreate = async () => {
     setSaving(true); setError("");
+    if (!form.persona_name.trim()) {
+      setError("AI counsellor name is required");
+      setSaving(false);
+      return;
+    }
     try {
       const res = await authFetch("/api/master/clients", { method: "POST", body: JSON.stringify(form) });
       const data = await res.json();
@@ -156,7 +161,7 @@ function AddClientModal({ onClose, onCreated }) {
         <div className="section-divider">Institute Info</div>
         {f("institute_name", "Institute Name", "text", "e.g. Indian Institute of Commerce")}
         <div className="form-row">
-          {f("persona_name", "AI Counsellor Name", "text", "e.g. Arun")}
+          {f("persona_name", "AI Counsellor Name", "text", "Enter assistant name")}
           {f("base_url", "Backend Base URL", "text", "https://your-app.onrender.com")}
         </div>
         <div className="section-divider">Twilio Credentials</div>

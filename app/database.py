@@ -11,7 +11,7 @@ MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise RuntimeError("MONGO_URI is not set. Check your .env file.")
 
-client = AsyncIOMotorClient(MONGO_URI)
+client = AsyncIOMotorClient(MONGO_URI, maxPoolSize=200, minPoolSize=10)
 db = client["lakshya_crm"]
 
 clients_col       = db["clients"]
@@ -19,3 +19,4 @@ users_col         = db["users"]          # client login credentials
 leads_col         = db["leads"]
 conversations_col = db["conversations"]
 appointments_col  = db["appointments"]
+blocklist_col     = db["token_blocklist"] 

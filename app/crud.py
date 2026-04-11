@@ -6,6 +6,7 @@ from .database import (
 )
 
 REENGAGE_MINUTES = 15
+KNOWN_SERVICE_INTERESTS = {"CA", "ACCA", "CMA", "CS", "CPA"}
 
 
 def _doc(doc) -> dict:
@@ -14,6 +15,28 @@ def _doc(doc) -> dict:
     doc["id"] = str(doc["_id"])
     doc.pop("_id", None)
     return doc
+
+
+def _object_id_or_none(value: str):
+    try:
+        return ObjectId(value)
+    except Exception:
+        return None
+
+
+def is_valid_object_id(value: str) -> bool:
+    return _object_id_or_none(value) is not None
+
+
+def normalize_service_interest(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip().upper()
+    if not normalized:
+        return None
+
+    return normalized if normalized in KNOWN_SERVICE_INTERESTS else normalized
 
 
 # =====================================================
@@ -156,6 +179,9 @@ async def get_or_create_lead(client_id: str, phone_number: str) -> dict:
 
 
 async def update_lead_field(lead_id: str, fields: dict):
+    if "service_interest" in fields:
+        fields["service_interest"] = normalize_service_interest(fields["service_interest"])
+
     await leads_col.update_one(
         {"_id": ObjectId(lead_id)},
         {"$set": fields}
@@ -173,6 +199,18 @@ async def get_leads_by_client(client_id: str) -> list:
     cursor = leads_col.find({"client_id": client_id}).sort("created_at", -1)
     docs = await cursor.to_list(length=10000)
     return [_doc(d) for d in docs]
+
+
+async def get_lead_by_id_for_client(client_id: str, lead_id: str) -> dict:
+    oid = _object_id_or_none(lead_id)
+    if not oid:
+        return None
+
+    doc = await leads_col.find_one({
+        "_id": oid,
+        "client_id": client_id,
+    })
+    return _doc(doc)
 
 
 async def get_leads_count_by_client(client_id: str) -> int:
@@ -198,10 +236,13 @@ async def save_message(client_id: str, lead_id: str, text: str, direction: str, 
     return doc
 
 
-async def get_recent_messages(lead_id: str, limit: int = 6) -> list:
+async def get_recent_messages(client_id: str, lead_id: str, limit: int = 6) -> list:
     cursor = (
         conversations_col
-        .find({"lead_id": lead_id})
+        .find({
+            "client_id": client_id,
+            "lead_id": lead_id,
+        })
         .sort("created_at", -1)
         .limit(limit)
     )
@@ -209,8 +250,11 @@ async def get_recent_messages(lead_id: str, limit: int = 6) -> list:
     return [_doc(d) for d in docs]
 
 
-async def get_conversations_by_lead(lead_id: str) -> list:
-    cursor = conversations_col.find({"lead_id": lead_id}).sort("created_at", 1)
+async def get_conversations_by_lead(client_id: str, lead_id: str) -> list:
+    cursor = conversations_col.find({
+        "client_id": client_id,
+        "lead_id": lead_id,
+    }).sort("created_at", 1)
     docs = await cursor.to_list(length=10000)
     return [_doc(d) for d in docs]
 
@@ -233,10 +277,13 @@ async def create_appointment(client_id: str, lead_id: str, requested_time: str, 
     return doc
 
 
-async def get_latest_appointment(lead_id: str) -> dict:
+async def get_latest_appointment(client_id: str, lead_id: str) -> dict:
     cursor = (
         appointments_col
-        .find({"lead_id": lead_id})
+        .find({
+            "client_id": client_id,
+            "lead_id": lead_id,
+        })
         .sort("created_at", -1)
         .limit(1)
     )
@@ -255,6 +302,20 @@ async def get_appointments_by_client(client_id: str) -> list:
     cursor = appointments_col.find({"client_id": client_id}).sort("created_at", -1)
     docs = await cursor.to_list(length=10000)
     return [_doc(d) for d in docs]
+
+
+async def get_leads_by_ids_for_client(client_id: str, lead_ids: list[str]) -> dict[str, dict]:
+    object_ids = [oid for oid in (_object_id_or_none(lead_id) for lead_id in lead_ids) if oid]
+    if not object_ids:
+        return {}
+
+    cursor = leads_col.find({
+        "_id": {"$in": object_ids},
+        "client_id": client_id,
+    })
+    docs = await cursor.to_list(length=len(object_ids))
+    scoped_docs = [_doc(doc) for doc in docs]
+    return {doc["id"]: doc for doc in scoped_docs}
 
 
 async def get_appointments_count_by_client(client_id: str) -> int:

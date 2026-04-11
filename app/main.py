@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -6,16 +6,18 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from twilio.request_validator import RequestValidator      # #2 FIX
 import traceback
 import asyncio
 from bson import ObjectId
 from twilio.rest import Client as TwilioClient
 
-from .database import clients_col, leads_col, conversations_col, appointments_col
+from .database import clients_col, leads_col, conversations_col, appointments_col, blocklist_col
 from .crud import (
     get_or_create_lead, update_lead_field, save_message,
     create_appointment, update_last_interaction,
     get_latest_appointment, update_appointment_time, get_client,
+    normalize_service_interest,
 )
 from .llm import (
     ask_llm, extract_name_with_two_layers, extract_service_interest,
@@ -27,10 +29,21 @@ from .routes.client import router as client_router
 
 # =====================================================
 # RATE LIMITER SETUP
-# Must be created before app so routers can share it
 # =====================================================
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+
+# =====================================================
+# LLM CONCURRENCY LIMITER
+# =====================================================
+
+llm_semaphore = asyncio.Semaphore(50)
+
+# =====================================================
+# INPUT VALIDATION
+# =====================================================
+
+MAX_MESSAGE_LENGTH = 1000                                  # #9 FIX
 
 # =====================================================
 # APP SETUP
@@ -38,23 +51,18 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 app = FastAPI(title="Lakshya CRM API")
 
-# Attach limiter to app state so @limiter.limit() decorators work
 app.state.limiter = limiter
-
-# Handle 429 Too Many Requests with a clean JSON response
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# SlowAPI middleware processes rate limit headers
 app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "https://user-ai-studio.vercel.app",
-    "https://admin-ai-studio.vercel.app",
-    "http://localhost:5173",
-    "http://localhost:5174",
-],
+        "https://user-ai-studio.vercel.app",
+        "https://admin-ai-studio.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,7 +70,6 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Register routers
 app.include_router(auth_router)
 app.include_router(master_router)
 app.include_router(client_router)
@@ -78,9 +85,16 @@ async def startup_event():
         [("client_id", 1), ("phone_number", 1)],
         unique=True
     )
-    await conversations_col.create_index([("client_id", 1), ("lead_id", 1)])
-    await appointments_col.create_index([("client_id", 1), ("lead_id", 1)])
+    await leads_col.create_index([("client_id", 1), ("created_at", -1)])
+    await leads_col.create_index([("client_id", 1), ("service_interest", 1), ("created_at", -1)])
+    await conversations_col.create_index([("client_id", 1), ("lead_id", 1), ("created_at", 1)])
+    await conversations_col.create_index([("client_id", 1), ("created_at", -1)])
+    await appointments_col.create_index([("client_id", 1), ("lead_id", 1), ("created_at", -1)])
+    await appointments_col.create_index([("client_id", 1), ("created_at", -1)])
     await clients_col.create_index("twilio_phone_number", unique=True)
+    # #4 FIX — blocklist indexes
+    await blocklist_col.create_index("jti", unique=True)
+    await blocklist_col.create_index("expires_at", expireAfterSeconds=0)  # TTL auto-cleanup
 
 
 # =====================================================
@@ -90,7 +104,7 @@ async def startup_event():
 def build_welcome_back_message(lead: dict, client: dict) -> str:
     name = lead.get("name") or ""
     interest = lead.get("service_interest")
-    institute = client.get("institute_name", "Lakshya")
+    institute = client.get("institute_name", "our institute")
     if interest:
         return (
             f"Hi {name} 🙂 welcome back!\n"
@@ -117,23 +131,23 @@ async def send_whatsapp(client: dict, to: str, body: str):
 
 
 # =====================================================
-# WHATSAPP WEBHOOK — per client, no rate limit needed
-# (Twilio already validates requests at their end)
+# CORE WEBHOOK PROCESSING LOGIC (runs in background)
+# client is passed in — already fetched and validated
+# in the webhook handler, no double DB lookup needed
 # =====================================================
 
-@app.post("/message/{client_id}")
-async def whatsapp_webhook(client_id: str, request: Request):
+async def process_webhook(client_id: str, form: dict, client: dict):
     try:
-        client = await get_client(client_id)
-        if not client or not client.get("is_active"):
-            return Response(status_code=404)
-
-        form = await request.form()
         user_text = form.get("Body", "").strip()
         from_number = form.get("From", "").replace("whatsapp:", "")
 
         if not user_text or not from_number:
-            return Response(status_code=200)
+            return
+
+        # #9 FIX — Truncate oversized messages before they hit the LLM
+        if len(user_text) > MAX_MESSAGE_LENGTH:
+            print(f"Warning: Message from {from_number} truncated ({len(user_text)} chars)")
+            user_text = user_text[:MAX_MESSAGE_LENGTH]
 
         lead = await get_or_create_lead(client_id, from_number)
         lead_id = lead["id"]
@@ -153,33 +167,38 @@ async def whatsapp_webhook(client_id: str, request: Request):
         extracted_service = extract_service_interest(user_text)
         appointment_words = ["appointment", "appointemnt", "callback", "call back", "confirm"]
         if extracted_service and extracted_service.lower() not in appointment_words:
-            if lead.get("service_interest") != extracted_service:
-                await update_lead_field(lead_id, {"service_interest": extracted_service})
-                lead["service_interest"] = extracted_service
+            normalized_service = normalize_service_interest(extracted_service)
+            if lead.get("service_interest") != normalized_service:
+                await update_lead_field(lead_id, {"service_interest": normalized_service})
+                lead["service_interest"] = normalized_service
 
         await save_message(client_id, lead_id, user_text, "inbound", "whatsapp")
 
         if greeting_type == "NEW_USER":
-            ai_reply = await ask_llm(user_text, lead=lead, greeting_type=greeting_type, client=client)
+            async with llm_semaphore:
+                ai_reply = await ask_llm(user_text, lead=lead, greeting_type=greeting_type, client=client)
             await save_message(client_id, lead_id, ai_reply, "outbound", "ai")
             await update_lead_field(lead_id, {"state": "normal"})
             await update_last_interaction(lead_id)
             await send_whatsapp(client, from_number, ai_reply)
-            return Response(status_code=200)
+            return
 
         text_lower = user_text.lower()
         user_is_greeting = text_lower.strip() in ["hi", "hello", "hey"]
 
         if greeting_type == "WELCOME_BACK":
             welcome_msg = build_welcome_back_message(lead, client)
-            ai_reply = welcome_msg if user_is_greeting else (
-                welcome_msg + "\n\n" + await ask_llm(user_text, lead=lead, greeting_type="NONE", client=client)
-            )
+            if user_is_greeting:
+                ai_reply = welcome_msg
+            else:
+                async with llm_semaphore:
+                    llm_reply = await ask_llm(user_text, lead=lead, greeting_type="NONE", client=client)
+                ai_reply = welcome_msg + "\n\n" + llm_reply
             await save_message(client_id, lead_id, ai_reply, "outbound", "ai")
             await update_lead_field(lead_id, {"state": "normal"})
             await update_last_interaction(lead_id)
             await send_whatsapp(client, from_number, ai_reply)
-            return Response(status_code=200)
+            return
 
         appointment_words_detect = ["appointment", "appointemnt", "callback", "call"]
         asking_words = ["when", "what", "where"]
@@ -191,7 +210,7 @@ async def whatsapp_webhook(client_id: str, request: Request):
         reschedule_keywords = ["reschedule", "change appointment"]
 
         if is_view_appointment:
-            latest_appt = await get_latest_appointment(lead_id)
+            latest_appt = await get_latest_appointment(client_id, lead_id)
             ai_reply = (
                 f"Your appointment is scheduled for {latest_appt['requested_time']}."
                 if latest_appt
@@ -199,7 +218,7 @@ async def whatsapp_webhook(client_id: str, request: Request):
             )
 
         elif not user_is_greeting and any(k in text_lower for k in reschedule_keywords):
-            latest_appt = await get_latest_appointment(lead_id)
+            latest_appt = await get_latest_appointment(client_id, lead_id)
             if latest_appt:
                 await update_lead_field(lead_id, {"state": "awaiting_appointment_time"})
                 ai_reply = "Sure 🙂 Please share the new day and time you prefer."
@@ -209,7 +228,7 @@ async def whatsapp_webhook(client_id: str, request: Request):
         elif lead.get("state") == "awaiting_appointment_time":
             formatted_time = parse_and_format_time_info(user_text)
             if formatted_time:
-                latest_appt = await get_latest_appointment(lead_id)
+                latest_appt = await get_latest_appointment(client_id, lead_id)
                 if latest_appt:
                     await update_appointment_time(latest_appt["id"], formatted_time)
                     await update_lead_field(lead_id, {"state": "normal"})
@@ -254,7 +273,8 @@ async def whatsapp_webhook(client_id: str, request: Request):
                 else:
                     ai_reply = "What day and time works best for you?"
             else:
-                ai_reply = await ask_llm(user_text, lead=lead, greeting_type=greeting_type, client=client)
+                async with llm_semaphore:
+                    ai_reply = await ask_llm(user_text, lead=lead, greeting_type=greeting_type, client=client)
 
         name = lead.get("name")
         if name and not user_is_greeting and "welcome back" not in ai_reply.lower():
@@ -269,13 +289,46 @@ async def whatsapp_webhook(client_id: str, request: Request):
             await update_lead_field(lead_id, {"state": "active_chat"})
         await update_last_interaction(lead_id)
         await send_whatsapp(client, from_number, ai_reply)
-        return Response(status_code=200)
 
     except Exception as e:
-        print("Webhook error:", e)
+        print("Webhook processing error:", e)
         traceback.print_exc()
-        return Response(status_code=200)
 
+
+# =====================================================
+# WHATSAPP WEBHOOK
+# #2 FIX — Twilio signature validated before processing
+# #7 FIX — Rate limited to 30 requests/min per IP
+# =====================================================
+
+@app.post("/message/{client_id}")
+@limiter.limit("30/minute")
+async def whatsapp_webhook(client_id: str, request: Request, background_tasks: BackgroundTasks):
+    # Fetch client first — needed for signature validation
+    client = await get_client(client_id)
+    if not client or not client.get("is_active"):
+        return Response(status_code=404)
+
+    form = await request.form()
+    form_data = dict(form)
+
+    # #2 FIX — Validate the request actually came from Twilio
+    validator = RequestValidator(client["twilio_auth_token"])
+    signature = request.headers.get("X-Twilio-Signature", "")
+    url = str(request.url)
+
+    if not validator.validate(url, form_data, signature):
+        print(f"Invalid Twilio signature for client {client_id} — request rejected")
+        return Response(status_code=403)
+
+    # Pass client along so process_webhook doesn't need another DB lookup
+    background_tasks.add_task(process_webhook, client_id, form_data, client)
+    return Response(status_code=200)
+
+
+# =====================================================
+# HEALTH CHECK
+# =====================================================
 
 @app.get("/health")
 async def health():
