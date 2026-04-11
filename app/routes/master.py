@@ -27,10 +27,8 @@ class CreateClientRequest(BaseModel):
     twilio_phone_number: str
     persona_name: Optional[str] = "Arun"
     system_prompt: Optional[str] = None
-    # Credentials for the client's CRM login
     username: str
     password: str
-    # Base URL for auto-registering Twilio webhook
     base_url: Optional[str] = None
 
 
@@ -42,6 +40,7 @@ class UpdateClientRequest(BaseModel):
     persona_name: Optional[str] = None
     system_prompt: Optional[str] = None
     is_active: Optional[bool] = None
+    webhook_url: Optional[str] = None          # ← added
 
 
 class ResetCredentialsRequest(BaseModel):
@@ -101,12 +100,13 @@ async def get_client_detail(client_id: str, _: dict = Depends(require_master)):
 
 
 # =====================================================
-# CREATE CLIENT + AUTO-REGISTER TWILIO WEBHOOK
+# CREATE CLIENT + AUTO-GENERATE WEBHOOK URL
+# Webhook URL is ALWAYS saved to DB.
+# Twilio auto-registration is attempted but optional.
 # =====================================================
 
 @router.post("/clients")
 async def create_new_client(body: CreateClientRequest, _: dict = Depends(require_master)):
-    # Create the client document
     client = await create_client({
         "institute_name": body.institute_name,
         "twilio_account_sid": body.twilio_account_sid,
@@ -125,20 +125,23 @@ async def create_new_client(body: CreateClientRequest, _: dict = Depends(require
         password_hash=hash_password(body.password)
     )
 
-    # Auto-register Twilio webhook if base_url provided
+    # Always generate and save webhook URL if base_url provided
     webhook_url = None
     if body.base_url:
+        webhook_url = f"{body.base_url}/message/{client_id}"
+        await update_client(client_id, {"webhook_url": webhook_url})
+
+        # Try to auto-register with Twilio (optional, fails silently for sandbox)
         try:
             twilio = TwilioClient(body.twilio_account_sid, body.twilio_auth_token)
             numbers = twilio.incoming_phone_numbers.list(
                 phone_number=body.twilio_phone_number
             )
             if numbers:
-                webhook_url = f"{body.base_url}/message/{client_id}"
                 numbers[0].update(sms_url=webhook_url, sms_method="POST")
-                await update_client(client_id, {"webhook_url": webhook_url})
+                print(f"Twilio webhook registered: {webhook_url}")
         except Exception as e:
-            print(f"Twilio webhook registration failed: {e}")
+            print(f"Twilio webhook auto-registration failed (manual setup needed): {e}")
 
     return {
         **client,

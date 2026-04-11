@@ -45,7 +45,7 @@ function LoginScreen({ onLogin }) {
       <div className="auth-box">
         <div className="auth-logo-wrap">
           <div className="auth-logo-icon">⚡</div>
-          <div className="auth-logo">AI Studio</div>
+          <div className="auth-logo">Ai Studio</div>
         </div>
         <div className="auth-role">Master Portal</div>
         <div className="auth-title">Sign in</div>
@@ -125,7 +125,7 @@ function AddClientModal({ onClose, onCreated }) {
     institute_name: "", twilio_account_sid: "", twilio_auth_token: "",
     twilio_phone_number: "", persona_name: "Arun", system_prompt: "",
     username: "", password: "",
-    base_url: window.location.origin.replace("5174", "8000").replace("5173", "8000")
+    base_url: "https://chatbot-nw9p.onrender.com"
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -198,7 +198,7 @@ function ClientDetail({ clientId, onBack }) {
     setLoading(true);
     authFetch(`/api/master/clients/${clientId}`).then(r => r.json()).then(d => {
       setClient(d);
-      setEditForm({ institute_name: d.institute_name, persona_name: d.persona_name, twilio_account_sid: d.twilio_account_sid, twilio_auth_token: "", twilio_phone_number: d.twilio_phone_number, system_prompt: d.system_prompt || "", is_active: d.is_active });
+      setEditForm({ institute_name: d.institute_name, persona_name: d.persona_name, twilio_account_sid: d.twilio_account_sid, twilio_auth_token: "", twilio_phone_number: d.twilio_phone_number, system_prompt: d.system_prompt || "", is_active: d.is_active, webhook_url: d.webhook_url || "" });
       setLoading(false);
     });
   };
@@ -324,7 +324,7 @@ export default function MasterApp() {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-name">AI Studio</div>
+          <div className="brand-name">Ai Studio</div>
           <div className="brand-tag">Master</div>
         </div>
         <nav className="sidebar-nav">
