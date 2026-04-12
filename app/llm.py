@@ -15,8 +15,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_PROMPT_PATH = "app/prompts/system_prompt.txt"
 
 MODELS = [
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "minimax/minimax-m2.5:free",
+    #"meta-llama/llama-3.1-8b-instruct:free",
+   # "minimax/minimax-m2.5:free",
     "arcee-ai/trinity-large-preview:free",
 ]
 
