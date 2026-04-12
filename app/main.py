@@ -12,7 +12,7 @@ import asyncio
 from bson import ObjectId
 from twilio.rest import Client as TwilioClient
 
-from .database import clients_col, leads_col, conversations_col, appointments_col, blocklist_col
+from .database import clients_col, users_col, leads_col, conversations_col, appointments_col, blocklist_col
 from .crud import (
     get_or_create_lead, update_lead_field, save_message,
     create_appointment, update_last_interaction,
@@ -81,6 +81,7 @@ app.include_router(client_router)
 
 @app.on_event("startup")
 async def startup_event():
+    await users_col.create_index("username", unique=True)
     await leads_col.create_index(
         [("client_id", 1), ("phone_number", 1)],
         unique=True

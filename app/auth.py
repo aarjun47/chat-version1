@@ -11,7 +11,7 @@ import bcrypt
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 
@@ -39,7 +39,13 @@ if not MASTER_PASSWORD:
 JWT_ALGORITHM    = "HS256"
 JWT_EXPIRE_HOURS = 24
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/client/login")
+CLIENT_AUTH_COOKIE = "client_access_token"
+MASTER_AUTH_COOKIE = "master_access_token"
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/auth/client/login",
+    auto_error=False,
+)
 
 
 # =====================================================
@@ -97,7 +103,42 @@ async def revoke_token(token: str):
 # Used by both master and client protected routes.
 # =====================================================
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def _preferred_cookie_names(request: Request) -> list[str]:
+    scope = (request.headers.get("x-auth-scope") or "").strip().lower()
+    path = request.url.path
+
+    if scope == "master" or path.startswith("/api/master"):
+        return [MASTER_AUTH_COOKIE, CLIENT_AUTH_COOKIE]
+
+    if scope == "client" or path.startswith("/api/client"):
+        return [CLIENT_AUTH_COOKIE, MASTER_AUTH_COOKIE]
+
+    return [CLIENT_AUTH_COOKIE, MASTER_AUTH_COOKIE]
+
+
+async def get_token_from_request(
+    request: Request,
+    bearer_token: Optional[str] = Depends(oauth2_scheme),
+) -> Optional[str]:
+    if bearer_token:
+        return bearer_token
+
+    for cookie_name in _preferred_cookie_names(request):
+        cookie_token = request.cookies.get(cookie_name)
+        if cookie_token:
+            return cookie_token
+
+    return None
+
+
+async def get_current_user(token: Optional[str] = Depends(get_token_from_request)) -> dict:
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     payload = decode_token(token)
     if not payload:
         raise HTTPException(

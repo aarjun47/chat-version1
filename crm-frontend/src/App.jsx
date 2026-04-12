@@ -4,13 +4,15 @@ import AnalyticsView from "./AnalyticsView.jsx";
 
 const API = "https://chatbot-nw9p.onrender.com";
 
-const getToken = () => localStorage.getItem("client_token");
-const getSession = () => { try { return JSON.parse(localStorage.getItem("client_session") || "{}"); } catch { return {}; } };
-
 const authFetch = (url, opts = {}) =>
   fetch(`${API}${url}`, {
     ...opts,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...(opts.headers || {}) },
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Scope": "client",
+      ...(opts.headers || {}),
+    },
   });
 
 function fmt(dt) {
@@ -37,13 +39,12 @@ function LoginScreen({ onLogin }) {
     try {
       const res = await fetch(`${API}/api/auth/client/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Auth-Scope": "client" },
         body: JSON.stringify(form),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.detail || "Login failed"); return; }
-      localStorage.setItem("client_token", data.access_token);
-      localStorage.setItem("client_session", JSON.stringify({ client_id: data.client_id, username: form.username, must_change_password: data.must_change_password }));
       onLogin(data);
     } catch {
       setError("Could not connect to server");
@@ -92,8 +93,6 @@ function ForceChangePassword({ onChanged }) {
     const res = await authFetch("/api/client/change-password", { method: "POST", body: JSON.stringify({ current_password: form.current_password, new_password: form.new_password }) });
     const data = await res.json();
     if (!res.ok) { setError(data.detail || "Failed"); setLoading(false); return; }
-    const session = getSession();
-    localStorage.setItem("client_session", JSON.stringify({ ...session, must_change_password: false }));
     onChanged();
   };
 
@@ -295,24 +294,90 @@ function SettingsView() {
 }
 
 export default function ClientApp() {
-  const [authed, setAuthed] = useState(!!getToken());
-  const [mustChange, setMustChange] = useState(getSession().must_change_password || false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [mustChange, setMustChange] = useState(false);
   const [view, setView] = useState("leads");
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [profile, setProfile] = useState(null);
-  const session = getSession();
+  const [username, setUsername] = useState("");
+
+  const loadProfile = async () => {
+    const res = await authFetch("/api/client/profile");
+    if (!res.ok) throw new Error("Unauthenticated");
+    const data = await res.json();
+    setProfile(data);
+    setUsername(data.username || "");
+    setMustChange(!!data.must_change_password);
+    return data;
+  };
 
   useEffect(() => {
-    if (authed && !mustChange) {
-      authFetch("/api/client/profile").then(r => r.json()).then(setProfile).catch(() => {});
-    }
-  }, [authed, mustChange]);
+    localStorage.removeItem("client_token");
+    localStorage.removeItem("client_session");
 
-  const handleLogin = (data) => { setAuthed(true); setMustChange(data.must_change_password); };
+    loadProfile()
+      .then(() => setAuthed(true))
+      .catch(() => {
+        setAuthed(false);
+        setMustChange(false);
+        setProfile(null);
+        setUsername("");
+      })
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  const handleLogin = async (data) => {
+    setAuthed(true);
+    setAuthChecked(true);
+    setMustChange(!!data.must_change_password);
+    setUsername(data.username || "");
+
+    if (!data.must_change_password) {
+      try {
+        await loadProfile();
+      } catch {
+        setAuthed(false);
+        setProfile(null);
+        setUsername("");
+      }
+    }
+  };
   const handleSelectLead = (id) => { setSelectedLeadId(id); setView("lead-detail"); };
 
+  const handlePasswordChanged = async () => {
+    try {
+      setMustChange(false);
+      await loadProfile();
+    } catch {
+      setAuthed(false);
+      setProfile(null);
+      setUsername("");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "X-Auth-Scope": "client" },
+      });
+    } catch {}
+
+    localStorage.removeItem("client_token");
+    localStorage.removeItem("client_session");
+    setAuthed(false);
+    setMustChange(false);
+    setProfile(null);
+    setUsername("");
+    setView("leads");
+    setSelectedLeadId(null);
+  };
+
+  if (!authChecked) return <div className="loading"><div className="spinner" />Loading...</div>;
   if (!authed) return <LoginScreen onLogin={handleLogin} />;
-  if (mustChange) return <ForceChangePassword onChanged={() => setMustChange(false)} />;
+  if (mustChange) return <ForceChangePassword onChanged={handlePasswordChanged} />;
 
   const pages = {
     leads: { title: "Leads", sub: "All WhatsApp leads and their status" },
@@ -322,7 +387,7 @@ export default function ClientApp() {
     settings: { title: "Settings", sub: "Account settings" },
   };
   const page = pages[view] || pages.leads;
-  const instituteName = profile?.institute_name || session.username;
+  const instituteName = profile?.institute_name || username || "Client Portal";
 
   return (
     <div className="layout">
@@ -340,8 +405,8 @@ export default function ClientApp() {
           <button className={`nav-btn ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}>⚙️ Settings</button>
         </nav>
         <div className="sidebar-bottom">
-          <span className="sidebar-user">{session.username}</span>
-          <button className="logout-btn" onClick={() => { localStorage.removeItem("client_token"); localStorage.removeItem("client_session"); setAuthed(false); }}>Logout</button>
+          <span className="sidebar-user">{username || "Client User"}</span>
+          <button className="logout-btn" onClick={handleLogout}>Logout</button>
         </div>
       </aside>
       <main className="main">

@@ -3,11 +3,15 @@ import "./index.css";
 
 const API = "https://chatbot-nw9p.onrender.com";
 
-const token = () => localStorage.getItem("master_token");
 const authFetch = (url, opts = {}) =>
   fetch(`${API}${url}`, {
     ...opts,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}`, ...(opts.headers || {}) },
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Scope": "master",
+      ...(opts.headers || {}),
+    },
   });
 
 function fmt(dt) {
@@ -28,12 +32,12 @@ function LoginScreen({ onLogin }) {
     try {
       const res = await fetch(`${API}/api/auth/master/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Auth-Scope": "master" },
         body: JSON.stringify(form),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.detail || "Login failed"); return; }
-      localStorage.setItem("master_token", data.access_token);
       onLogin();
     } catch { setError("Could not connect to server"); }
     finally { setLoading(false); }
@@ -70,15 +74,17 @@ function LoginScreen({ onLogin }) {
 // =====================================================
 // DASHBOARD
 // =====================================================
-function Dashboard({ onSelectClient }) {
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
+function Dashboard({ onSelectClient, initialClients = null }) {
+  const [clients, setClients] = useState(initialClients || []);
+  const [loading, setLoading] = useState(!initialClients);
 
   const load = () => {
     setLoading(true);
     authFetch("/api/master/clients").then(r => r.json()).then(d => { setClients(d); setLoading(false); });
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!initialClients) load();
+  }, []);
 
   const totalLeads = clients.reduce((s, c) => s + (c.leads_count || 0), 0);
   const totalAppts = clients.reduce((s, c) => s + (c.appointments_count || 0), 0);
@@ -316,12 +322,56 @@ function ClientDetail({ clientId, onBack }) {
 // ROOT
 // =====================================================
 export default function MasterApp() {
-  const [authed, setAuthed] = useState(!!localStorage.getItem("master_token"));
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [view, setView] = useState("dashboard");
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [dashboardSeed, setDashboardSeed] = useState(null);
 
-  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
+  useEffect(() => {
+    localStorage.removeItem("master_token");
+
+    authFetch("/api/master/clients")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Unauthenticated");
+        const data = await res.json();
+        setDashboardSeed(data);
+        setAuthed(true);
+      })
+      .catch(() => {
+        setAuthed(false);
+        setDashboardSeed(null);
+      })
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  const handleLogin = () => {
+    localStorage.removeItem("master_token");
+    setAuthed(true);
+    setAuthChecked(true);
+    setDashboardSeed(null);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "X-Auth-Scope": "master" },
+      });
+    } catch {}
+
+    localStorage.removeItem("master_token");
+    setAuthed(false);
+    setDashboardSeed(null);
+    setView("dashboard");
+    setSelectedClientId(null);
+    setShowAddModal(false);
+  };
+
+  if (!authChecked) return <div className="loading"><div className="spinner" />Loading...</div>;
+  if (!authed) return <LoginScreen onLogin={handleLogin} />;
 
   const handleSelectClient = (id) => { setSelectedClientId(id); setView("client-detail"); };
 
@@ -341,7 +391,7 @@ export default function MasterApp() {
         </nav>
         <div className="sidebar-bottom">
           <span className="sidebar-user">Master Admin</span>
-          <button className="logout-btn" onClick={() => { localStorage.removeItem("master_token"); setAuthed(false); }}>Logout</button>
+          <button className="logout-btn" onClick={handleLogout}>Logout</button>
         </div>
       </aside>
       <main className="main">
@@ -353,7 +403,7 @@ export default function MasterApp() {
           {view === "dashboard" && <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Add Client</button>}
         </div>
         <div className="content">
-          {view === "dashboard" && <Dashboard onSelectClient={handleSelectClient} />}
+          {view === "dashboard" && <Dashboard onSelectClient={handleSelectClient} initialClients={dashboardSeed} />}
           {view === "client-detail" && selectedClientId && <ClientDetail clientId={selectedClientId} onBack={() => setView("dashboard")} />}
         </div>
       </main>

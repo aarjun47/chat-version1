@@ -206,6 +206,7 @@ def _build_enquiry_distribution(leads: list[dict]):
 async def get_profile(user: dict = Depends(require_client)):
     client_id = user["client_id"]
     client = await get_client(client_id)
+    db_user = await get_user_by_client_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -219,6 +220,8 @@ async def get_profile(user: dict = Depends(require_client)):
         "is_active": client.get("is_active"),
         "leads_count": leads_count,
         "appointments_count": appts_count,
+        "username": db_user.get("username") if db_user else user.get("username"),
+        "must_change_password": bool(db_user.get("must_change_password")) if db_user else False,
     }
 
 

@@ -39,6 +39,10 @@ def normalize_service_interest(value: str | None) -> str | None:
     return normalized if normalized in KNOWN_SERVICE_INTERESTS else normalized
 
 
+def normalize_username(username: str) -> str:
+    return username.strip()
+
+
 # =====================================================
 # CLIENT OPERATIONS
 # =====================================================
@@ -89,7 +93,7 @@ async def delete_client(client_id: str):
 async def create_user(client_id: str, username: str, password_hash: str) -> dict:
     doc = {
         "client_id": client_id,
-        "username": username,
+        "username": normalize_username(username),
         "password_hash": password_hash,
         "must_change_password": True,
         "created_at": datetime.now(timezone.utc),
@@ -101,7 +105,7 @@ async def create_user(client_id: str, username: str, password_hash: str) -> dict
 
 
 async def get_user_by_username(username: str) -> dict:
-    doc = await users_col.find_one({"username": username})
+    doc = await users_col.find_one({"username": normalize_username(username)})
     return _doc(doc)
 
 
@@ -125,7 +129,7 @@ async def update_user_credentials(client_id: str, username: str, password_hash: 
     await users_col.update_one(
         {"client_id": client_id},
         {"$set": {
-            "username": username,
+            "username": normalize_username(username),
             "password_hash": password_hash,
             "must_change_password": True
         }},

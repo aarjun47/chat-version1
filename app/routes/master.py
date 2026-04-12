@@ -7,13 +7,14 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional
+from pymongo.errors import DuplicateKeyError
 from twilio.rest import Client as TwilioClient
 
 from ..auth import require_master, hash_password
 from ..crud import (
     get_all_clients, get_client, create_client,
     update_client, delete_client,
-    create_user, update_user_credentials, get_user_by_client_id,
+    create_user, update_user_credentials, get_user_by_client_id, get_user_by_username,
     get_leads_count_by_client, get_appointments_count_by_client
 )
 
@@ -114,6 +115,14 @@ async def get_client_detail(client_id: str, _: dict = Depends(require_master)):
 
 @router.post("/clients")
 async def create_new_client(body: CreateClientRequest, _: dict = Depends(require_master)):
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    existing_user = await get_user_by_username(username)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
     client = await create_client({
         "institute_name": body.institute_name,
         "twilio_account_sid": body.twilio_account_sid,
@@ -125,11 +134,15 @@ async def create_new_client(body: CreateClientRequest, _: dict = Depends(require
 
     client_id = client["id"]
 
-    await create_user(
-        client_id=client_id,
-        username=body.username,
-        password_hash=hash_password(body.password)
-    )
+    try:
+        await create_user(
+            client_id=client_id,
+            username=username,
+            password_hash=hash_password(body.password)
+        )
+    except DuplicateKeyError:
+        await delete_client(client_id)
+        raise HTTPException(status_code=400, detail="Username already exists")
 
     webhook_url = None
     if body.base_url:
@@ -156,7 +169,7 @@ async def create_new_client(body: CreateClientRequest, _: dict = Depends(require
         "persona_name": client.get("persona_name"),
         "is_active": client.get("is_active"),
         "webhook_url": webhook_url,
-        "username": body.username,
+        "username": username,
         "message": "Client created successfully"
     }
 
@@ -194,11 +207,22 @@ async def reset_credentials(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    await update_user_credentials(
-        client_id=client_id,
-        username=body.username,
-        password_hash=hash_password(body.password)
-    )
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    existing_user = await get_user_by_username(username)
+    if existing_user and existing_user["client_id"] != client_id:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    try:
+        await update_user_credentials(
+            client_id=client_id,
+            username=username,
+            password_hash=hash_password(body.password)
+        )
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="Username already exists")
     return {"status": "credentials reset", "must_change_password": True}
 
 
